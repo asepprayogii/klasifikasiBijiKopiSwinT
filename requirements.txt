@@ -1,0 +1,7 @@
+streamlit
+torch
+torchvision
+timm==1.0.9
+pillow
+pandas
+plotly
