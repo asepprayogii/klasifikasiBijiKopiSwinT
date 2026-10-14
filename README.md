@@ -1,4 +1,4 @@
-<<<<<<< HEAD
+
 # Folder bobot model
 
 Letakkan 5 file checkpoint hasil training (checkpoint fold terbaik) di folder ini
@@ -16,4 +16,3 @@ File asalnya ada di `Kopi_SwinT_CascadeFlat_KFold/Checkpoints/` di Google Drive 
 Jika ingin mengganti nama file, ubah `JENIS_MODEL_PATH` dan `ROAST_MODEL_PATHS` di `app.py`.
 =======
 # klasifikasiBijiKopiSwinT
->>>>>>> 6e0e1f5d80d1524baba30ee5b94a10a4cc20d3bd
