@@ -108,64 +108,111 @@ def make_bar_chart(labels, probs, title, color):
         df, x="Kelas", y="Probabilitas (%)", text="Probabilitas (%)",
         title=title, color_discrete_sequence=[color],
     )
-    fig.update_traces(texttemplate="%{text:.2f}%", textposition="outside")
-    fig.update_yaxes(range=[0, 110])
-    fig.update_layout(showlegend=False, margin=dict(t=60, b=20))
+    fig.update_traces(texttemplate="%{text:.2f}%", textposition="outside", marker_line_width=0)
+    fig.update_yaxes(range=[0, 118], title=None, showgrid=True, gridcolor="rgba(128,128,128,0.15)")
+    fig.update_xaxes(title=None)
+    fig.update_layout(
+        showlegend=False, height=330, margin=dict(t=55, b=10, l=10, r=10),
+        title=dict(font=dict(size=15)), bargap=0.35,
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+    )
     return fig
 
 
 # ----------------------------------------------------------------------------
-# UI
+# UI  (layout lebar / landscape: kiri = input, kanan = hasil)
 # ----------------------------------------------------------------------------
-st.set_page_config(page_title="Klasifikasi Biji Kopi", page_icon="☕", layout="centered")
+st.set_page_config(page_title="Klasifikasi Biji Kopi", page_icon="☕", layout="wide")
+
+# CSS: rapatkan margin atas/bawah & batasi tinggi pratinjau agar semua muat dalam satu layar landscape.
+st.markdown(
+    """
+    <style>
+      .block-container {padding-top: 3.2rem; padding-bottom: 0.8rem; max-width: 1500px;}
+      h1 {font-size: 1.7rem !important; padding: 0 0 0.1rem 0 !important;}
+      [data-testid="stImage"] img {max-height: 250px; width: auto; max-width: 100%;
+                                   object-fit: contain; border-radius: 10px; margin: 0 auto; display: block;}
+      [data-testid="stFileUploader"] section {padding: 0.6rem 0.8rem;}
+      [data-testid="stMetric"] {background: rgba(128,128,128,0.08); border-radius: 10px; padding: 0.5rem 0.9rem;}
+      [data-testid="stMetricValue"] {font-size: 1.5rem;}
+      div[data-testid="stAlert"] h3 {margin: 0; padding: 0.1rem 0; font-size: 1.35rem; line-height: 1.5;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 st.title("☕ Klasifikasi Jenis & Tingkat Sangrai Biji Kopi")
-st.write(
-    "Unggah foto biji kopi untuk memprediksi **jenis** (Arabika, Ekselsa, Liberika, Robusta) "
-    "dan **tingkat sangrai** (Dark, Green, Light, Medium) menggunakan pendekatan *Cascade* "
-    "berbasis Swin Transformer Tiny."
+st.caption(
+    "Pendekatan *Cascade* berbasis Swin Transformer Tiny  •  Tahap 1: Jenis (Arabika, Ekselsa, Liberika, Robusta)  •  "
+    f"Tahap 2: Tingkat Sangrai (Dark, Green, Light, Medium)  •  Perangkat: **{DEVICE.type.upper()}**"
 )
-st.caption(f"Perangkat inferensi: **{DEVICE.type.upper()}**")
 
-uploaded = st.file_uploader("Unggah gambar biji kopi (JPG/PNG)", type=["jpg", "jpeg", "png"])
+col_in, col_out = st.columns([1, 2.4], gap="large")
 
-if uploaded is not None:
-    image = Image.open(uploaded).convert("RGB")
-    st.image(image, caption="Gambar yang diunggah", use_container_width=True)
+# ------------------------------ Kolom kiri: input ------------------------------
+with col_in:
+    st.subheader("1. Unggah Citra", divider="gray")
+    uploaded = st.file_uploader(
+        "Unggah gambar biji kopi (JPG/PNG)", type=["jpg", "jpeg", "png"], label_visibility="collapsed"
+    )
+    image = None
+    if uploaded is not None:
+        image = Image.open(uploaded).convert("RGB")
+        st.image(image, caption=f"{uploaded.name}  ({image.width}×{image.height} px)")
+    predict_clicked = st.button("Prediksi", type="primary", use_container_width=True, disabled=image is None)
 
-    if st.button("Prediksi", type="primary"):
-        try:
-            tensor = eval_tf(image).unsqueeze(0).to(DEVICE)
+# ------------------------------ Kolom kanan: hasil -----------------------------
+with col_out:
+    st.subheader("2. Hasil Prediksi", divider="gray")
 
-            # --- Tahap 1: Jenis ---
-            model_jenis = load_model(JENIS_MODEL_PATH, num_classes=len(JENIS_LABELS))
-            probs_jenis = predict_probs(model_jenis, tensor)
-            pred_jenis = JENIS_LABELS[int(probs_jenis.argmax())]
+    if image is None:
+        st.info("Silakan unggah gambar terlebih dahulu, lalu tekan **Prediksi**.")
+    else:
+        file_key = f"{uploaded.name}-{uploaded.size}"
 
-            # --- Tahap 2: Tingkat Sangrai (model sesuai jenis hasil Tahap 1) ---
-            model_roast = load_model(ROAST_MODEL_PATHS[pred_jenis], num_classes=len(ROAST_LABELS))
-            probs_roast = predict_probs(model_roast, tensor)
-            pred_roast = ROAST_LABELS[int(probs_roast.argmax())]
+        if predict_clicked:
+            try:
+                tensor = eval_tf(image).unsqueeze(0).to(DEVICE)
 
-            # --- Hasil ---
-            st.success(f"### Hasil Prediksi: {pred_jenis} - {pred_roast} Roast")
-            c1, c2 = st.columns(2)
-            c1.metric("Jenis", pred_jenis, f"{probs_jenis.max() * 100:.2f}%")
-            c2.metric("Tingkat Sangrai", pred_roast, f"{probs_roast.max() * 100:.2f}%")
+                # --- Tahap 1: Jenis ---
+                model_jenis = load_model(JENIS_MODEL_PATH, num_classes=len(JENIS_LABELS))
+                probs_jenis = predict_probs(model_jenis, tensor)
+                pred_jenis = JENIS_LABELS[int(probs_jenis.argmax())]
 
-            st.plotly_chart(
-                make_bar_chart(JENIS_LABELS, probs_jenis, "Probabilitas Jenis Kopi (Tahap 1)", "#6f4e37"),
+                # --- Tahap 2: Tingkat Sangrai (model sesuai jenis hasil Tahap 1) ---
+                model_roast = load_model(ROAST_MODEL_PATHS[pred_jenis], num_classes=len(ROAST_LABELS))
+                probs_roast = predict_probs(model_roast, tensor)
+                pred_roast = ROAST_LABELS[int(probs_roast.argmax())]
+
+                st.session_state["hasil"] = {
+                    "key": file_key, "jenis": pred_jenis, "roast": pred_roast,
+                    "p_jenis": probs_jenis, "p_roast": probs_roast,
+                }
+            except FileNotFoundError as e:
+                st.session_state.pop("hasil", None)
+                st.error(f"{e}\n\nPastikan file .pth sudah diletakkan di folder `weights/` "
+                         "dan namanya sesuai dengan konfigurasi di bagian atas `app.py`.")
+            except Exception as e:  # noqa: BLE001
+                st.session_state.pop("hasil", None)
+                st.error(f"Terjadi kesalahan saat inferensi: {e}")
+
+        hasil = st.session_state.get("hasil")
+        if hasil and hasil["key"] == file_key:
+            st.success(f"### Hasil Prediksi: {hasil['jenis']} - {hasil['roast']} Roast")
+
+            m1, m2 = st.columns(2)
+            m1.metric("Jenis (Tahap 1)", hasil["jenis"], f"{hasil['p_jenis'].max() * 100:.2f}%")
+            m2.metric("Tingkat Sangrai (Tahap 2)", hasil["roast"], f"{hasil['p_roast'].max() * 100:.2f}%")
+
+            g1, g2 = st.columns(2)
+            g1.plotly_chart(
+                make_bar_chart(JENIS_LABELS, hasil["p_jenis"], "Probabilitas Jenis Kopi (Tahap 1)", "#6f4e37"),
                 use_container_width=True,
             )
-            st.plotly_chart(
-                make_bar_chart(ROAST_LABELS, probs_roast,
-                               f"Probabilitas Tingkat Sangrai — model {pred_jenis} (Tahap 2)", "#c68642"),
+            g2.plotly_chart(
+                make_bar_chart(ROAST_LABELS, hasil["p_roast"],
+                               f"Probabilitas Tingkat Sangrai — model {hasil['jenis']} (Tahap 2)", "#c68642"),
                 use_container_width=True,
             )
-        except FileNotFoundError as e:
-            st.error(f"{e}\n\nPastikan file .pth sudah diletakkan di folder `weights/` "
-                     "dan namanya sesuai dengan konfigurasi di bagian atas `app.py`.")
-        except Exception as e:  # noqa: BLE001
-            st.error(f"Terjadi kesalahan saat inferensi: {e}")
-else:
-    st.info("Silakan unggah gambar terlebih dahulu.")
+        else:
+            st.info("Citra siap. Tekan tombol **Prediksi** untuk memulai klasifikasi.")
